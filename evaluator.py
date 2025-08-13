@@ -38,13 +38,15 @@ def pl_eval(env, node):
         operand = unops[node[0]]
         return operand(pl_eval(node[1]))
 
-    if len(node) == 4 and node[0] == "?":
-        _, cond, yes, no = node
+    if len(node) in [3,4] and node[0] in ["?", "if"]:
+        _, cond, yes, *no = node
+        no = no[0] if no else ["val", None] #handle the else part being optional
+        new_env = (dict(), env) # Define a new inner env for the conditional's scope. This way if a var is defined in cond, it will be added to new_env, and can be accessed from inside the scope
 
         if (pl_eval(cond)):
-            return pl_eval(yes)
+            return pl_eval(new_env, yes)
         else:
-            return pl_eval(no)
+            return pl_eval(new_env, no)
     if (node[0]) == "print":
         return print(*(pl_eval(val) for val in node[1:]))
 
@@ -70,7 +72,37 @@ def pl_eval(env, node):
         scope[name] = value
         return value               
 
+    if node[0] == "loop" and len(node) == 3:
+        _, cond, body = node
+
+        ret = None
+        while True:
+            new_env = (dict(), env)
+            if not pl_eval(new_env, cond):
+                break
+            try:
+                ret = pl_eval(new_env, body)
+            except LoopBreak:
+                break
+            except LoopContinue:
+                continue
+        return ret
+
+    if node[0] == "break" and len(node) == 1:
+        raise LoopBreak
+    if node[0] == "continue" and len(node) == 1:
+        raise LoopContinue
+
     raise ValueError("invalid expression")
+
+class LoopBreak(Exception):
+    def __init__(self):
+        super().__init__('break outside a loop')
+
+class LoopContinue(Exception):
+    def __init__(self):
+        super().__init__('continue outside a loop')
+
 
 def name_lookup(env, key):
     while env:
